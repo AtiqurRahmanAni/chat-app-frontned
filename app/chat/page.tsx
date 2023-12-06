@@ -16,7 +16,6 @@ const Chat: React.FC = () => {
   useEffect(() => {
     const getAllThreads = async () => {
       const response = await fetchThread();
-      console.log(response);
       if ("error" in response) {
         toast.error(response.error);
       } else {

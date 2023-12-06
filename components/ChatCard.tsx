@@ -1,9 +1,13 @@
 import Image from "next/image";
 
-const ChatCard: React.FC<{ isMine: boolean; message: string }> = ({
-  isMine = false,
-  message,
-}) => {
+import { MessageType } from "@/types";
+
+const ChatCard: React.FC<{
+  content: string;
+  contentType: string;
+  upload: string;
+  isMine: boolean;
+}> = ({ content, contentType, upload, isMine = false }) => {
   const cardClass = isMine ? "bg-blue-500 text-right" : "bg-gray-400";
   return (
     <div className={`flex my-2 ${isMine && "self-end"}`}>
@@ -17,9 +21,20 @@ const ChatCard: React.FC<{ isMine: boolean; message: string }> = ({
           alt="bot icon"
         />
       )}
-      <div className={`text-white`}>
-        <p className={`p-2.5 rounded-lg ${cardClass}`}>{message}</p>
-      </div>
+      {contentType === MessageType.Text ? (
+        <div className={`text-white`}>
+          <p className={`p-2.5 rounded-lg ${cardClass}`}>{content}</p>
+        </div>
+      ) : (
+        <Image
+          src={upload}
+          width={200}
+          height={500}
+          alt="chat file"
+          style={{ width: "150px", height: "250px" }}
+          className="rounded-lg"
+        />
+      )}
     </div>
   );
 };

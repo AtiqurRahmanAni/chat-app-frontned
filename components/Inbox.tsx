@@ -5,7 +5,6 @@ import {
   useRef,
   useContext,
   useState,
-  useLayoutEffect,
 } from "react";
 import ChatCard from "./ChatCard";
 import Form from "./Form";
@@ -13,9 +12,18 @@ import useWebSocket from "react-use-websocket";
 import { fetchMessageFromThread } from "@/actions/fetch-messages-from-thread";
 import toast from "react-hot-toast";
 import { AuthContext } from "@/contexts/AuthContext";
+import { MessageType } from "@/types";
+import { useRouter } from "next/navigation";
+import {
+  sendTextMessageServer,
+  sendFileMessageServer,
+} from "@/actions/send-message-action";
+import { Response } from "@/actions/send-message-action";
 
 type Message = {
-  text: string;
+  content: string;
+  contentType: string;
+  upload: string;
   isMine: boolean;
 };
 
@@ -23,13 +31,8 @@ type ReceivedMessage = {
   message: string;
   message_type: string;
   message_owner: number;
+  upload: string;
 };
-
-enum MessageType {
-  Text = "text",
-  Image = "image",
-  Voice = "voice",
-}
 
 enum ReadyState {
   UNINSTANTIATED = -1,
@@ -45,6 +48,8 @@ const Inbox: React.FC<{
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const { userInfo } = useContext(AuthContext);
   const [messages, setMessages] = useState<Message[]>([]);
+  const router = useRouter();
+
   useEffect(() => {
     const fetchMessages = async () => {
       const response = await fetchMessageFromThread(threadId);
@@ -53,7 +58,9 @@ const Inbox: React.FC<{
         toast.error(response.error);
       } else {
         const temp = response.map((item) => ({
-          text: item.content,
+          content: item.content,
+          contentType: item.content_type,
+          upload: item.upload,
           isMine: item.user === userInfo?.id,
         }));
         setMessages(temp);
@@ -72,12 +79,12 @@ const Inbox: React.FC<{
   const socketUrl = `${process.env.NEXT_PUBLIC_CHAT_URL}/${threadId}/`;
 
   const {
-    sendMessage,
-    sendJsonMessage,
-    lastMessage,
-    lastJsonMessage,
+    // sendMessage,
+    // sendJsonMessage,
+    // lastMessage,
+    // lastJsonMessage,
     readyState,
-    getWebSocket,
+    // getWebSocket,
   } = useWebSocket(socketUrl, {
     onOpen: () => console.log("socket opened"),
     shouldReconnect: (closeEvent) => true,
@@ -86,21 +93,51 @@ const Inbox: React.FC<{
       const data: ReceivedMessage = JSON.parse(messageEvent.data);
       setMessages((prev) => [
         ...prev,
-        { text: data.message, isMine: data.message_owner === userInfo?.id },
+        {
+          content: data.message,
+          contentType: data.message_type,
+          isMine: data.message_owner === userInfo?.id,
+          upload: data.upload,
+        },
       ]);
     },
   });
 
-  const handleSubmit = (value: string): void => {
+  const handleResponseError = (response: Response) => {
+    if (response && response.status === 401) {
+      toast.error("Session expired");
+      router.replace("/login");
+    } else if (response && response.status === 500) {
+      toast.error(response.error);
+    }
+  };
+
+  const handleSubmit = async (
+    value: string | File,
+    message_type: MessageType
+  ): Promise<void> => {
     if (readyState === ReadyState.OPEN) {
-      sendJsonMessage(
-        {
-          message: value,
-          message_type: MessageType.Text,
-          from: userInfo?.id,
-        },
-        false
-      );
+      if (message_type === MessageType.Text) {
+        const response = await sendTextMessageServer(
+          userInfo?.id as number,
+          threadId,
+          value as string,
+          message_type
+        );
+
+        handleResponseError(response);
+      } else if (message_type === MessageType.Image) {
+        const formData = new FormData();
+        formData.append("user_id", String(userInfo?.id));
+        formData.append("thread_id", String(threadId));
+        formData.append("message_files", value);
+        formData.append("message_type", message_type);
+        const response = await sendFileMessageServer(formData);
+
+        handleResponseError(response);
+      }
+    } else {
+      toast.error("Disconnected");
     }
   };
 
@@ -108,7 +145,13 @@ const Inbox: React.FC<{
     <div className="flex flex-col justify-center items-center max-h-screen p-2 w-full">
       <div className="flex flex-col w-full overflow-y-scroll mb-2 h-screen px-2 mt-20">
         {messages.map((obj, index) => (
-          <ChatCard key={index} isMine={obj.isMine} message={obj.text} />
+          <ChatCard
+            key={index}
+            isMine={obj.isMine}
+            content={obj.content}
+            contentType={obj.contentType}
+            upload={obj.upload}
+          />
         ))}
         <div ref={messagesEndRef} />
       </div>
